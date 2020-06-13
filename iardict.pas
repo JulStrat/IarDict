@@ -45,16 +45,16 @@ type
 
     procedure Grow; inline;
     procedure Shrink; inline;
-    procedure Resize(cap: integer); inline;
+    procedure Resize(cap: integer);
     function FindNode(key: PChar; keyLen: integer;
-      out block: integer; out prev: PKeyNode): PKeyNode; inline;
+      out block: integer; out prev: PKeyNode): PKeyNode;
 
     public
     procedure Init(hash: THash);
     procedure Clear;
     function UsedBlocks: integer; inline;
-    function Find(key: PChar; keyLen: integer; out value: Pointer): boolean; inline;
-    function Remove(key: PChar; keyLen: integer): boolean; inline;
+    function Find(key: PChar; keyLen: integer; out value: Pointer): boolean;
+    function Remove(key: PChar; keyLen: integer): boolean;
     function Insert(key: PChar; keyLen: integer; value: Pointer = nil): integer;
 
     property keyNum: integer read FKeyNum;
@@ -150,11 +150,15 @@ begin
   while kn <> nil do
   begin
     if (kn.keyLen = keylen) and (CompareMem(kn.key, key, keyLen) = True) then
+    begin
+      prev := pn;
       Exit(kn);
+    end;
     pn := kn;
     kn := kn.Next;
   end;
 
+  prev := pn;
   Exit(kn);
 end;
 

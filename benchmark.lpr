@@ -76,6 +76,10 @@ begin
       break;
     end;
 
+    for i := 0 to Length(rnd) - 1 do
+      rnd[i] := Random();
+    t.Remove(PChar(@rnd[0]), SizeOf(rnd));
+
   end;
   WriteLn('      Ticks - ', GetTickCount64() - start);
   WriteLn('       Keys - ', t.keyNum);
@@ -109,6 +113,9 @@ begin
       break;
     end;
 
+    for i := 0 to Length(rnd) - 1 do
+      rnd[i] := Random();
+    gdict.Remove(rnd);
   end;
   WriteLn('Ticks - ', GetTickCount64() - start);
   WriteLn('Keys - ', gdict.Count);
@@ -135,6 +142,12 @@ begin
       WriteLn('Err');
       break;
     end;
+  WriteLn('Ticks - ', GetTickCount64() - start);
+
+  for wrd in frDict do
+    t.Remove(PChar(wrd), Length(wrd));
+
+  WriteLn('Keys - ', t.keyNum);
   WriteLn('Ticks - ', GetTickCount64() - start);
 
   t.Clear();
