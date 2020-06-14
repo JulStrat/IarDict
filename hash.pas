@@ -16,15 +16,15 @@ interface
 uses
   Classes, SysUtils;
 
-function FNV1A_Hash_Jesteress(key: PChar; keyLen: integer): DWord; inline;
-function FNV1A_Hash_Meiyan(key: PChar; keyLen: integer): DWord; inline;
-function FNV1A_Hash_Mantis(key: PChar; keyLen: integer): DWord; inline;
+function FNV1A_Hash_Jesteress(key: PChar; keyLen: NativeUInt): DWord; inline;
+function FNV1A_Hash_Meiyan(key: PChar; keyLen: NativeUInt): DWord; inline;
+function FNV1A_Hash_Mantis(key: PChar; keyLen: NativeUInt): DWord; inline;
 
 implementation
 
 {$Q-}{$R-}
 
-function FNV1A_Hash_Jesteress(key: PChar; keyLen: integer): DWord;
+function FNV1A_Hash_Jesteress(key: PChar; keyLen: NativeUInt): DWord;
 var
   hash32: DWord;
 begin
@@ -59,7 +59,7 @@ begin
 
 end;
 
-function FNV1A_Hash_Meiyan(key: PChar; keyLen: integer): DWord;
+function FNV1A_Hash_Meiyan(key: PChar; keyLen: NativeUInt): DWord;
 var
   hash32: DWord;
 begin
@@ -96,7 +96,7 @@ begin
 
 end;
 
-function FNV1A_Hash_Mantis(key: PChar; keyLen: integer): DWord;
+function FNV1A_Hash_Mantis(key: PChar; keyLen: NativeUInt): DWord;
 var
   hash32: DWord;
   p: PChar;

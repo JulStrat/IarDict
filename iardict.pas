@@ -16,7 +16,7 @@ uses
   Classes, SysUtils;
 
 type
-  THash = function(key: PChar; keyLen: integer): DWord;
+  THash = function(key: PChar; keyLen: NativeUInt): DWord;
 
   PPKeyNode = ^PKeyNode;
   PKeyNode = ^TKeyNode;
@@ -47,7 +47,7 @@ type
     procedure Shrink; inline;
     procedure Resize(cap: integer);
     function FindNode(key: PChar; keyLen: integer;
-      out block: integer; out prev: PKeyNode): PKeyNode;
+      out block: integer; out prev: PKeyNode): PKeyNode; inline;
 
     public
     procedure Init(hash: THash);
@@ -73,9 +73,13 @@ var
   kn: PKeyNode;
 begin
   kn := AllocMem(SizeOf(TKeyNode));
-  GetMem(kn.key, keyLen);
+
   (* Copy key *)
+  GetMem(kn.key, keyLen);
   Move(key^, (kn.key)^, keyLen);
+  (* Copy ref *)
+  (* kn.key := key; *)
+
   kn.keyLen := keyLen;
   Result := kn;
 end;
@@ -87,6 +91,7 @@ begin
   while node <> nil do
   begin
     nn := node.Next;
+
     if node.key <> nil then
       FreeMem(node.key);
     FreeMem(node);

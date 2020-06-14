@@ -90,6 +90,7 @@ begin
   t.Clear();
   WriteLn('Ticks with free - ', GetTickCount64() - start);
 
+  //halt(70);
 
   gdict := TDictionary<TRnd, Pointer>.Create();
   start := GetTickCount64();
