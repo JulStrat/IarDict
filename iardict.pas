@@ -18,19 +18,10 @@ uses
 type
   THash = function(key: PChar; keyLen: NativeUInt): DWord;
 
-  { KeyNode Layout
-  next   - PChar       offset - 0
-  keeLen - NativeUInt  offset - SizeOf(PChar)
-  key    - char[]      offset - SizeOf(PChar) + SizeOf(NativeUInt)
-  value  - Pointer     offset - SizeOf(PChar) + SizeOf(NativeUInt) + keyLen
-
-  Total -  SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(Pointer) + keyLen
-  }
-
+{
   PPKeyNode = ^PKeyNode;
   PKeyNode = ^TKeyNode;
 
-  { TKeyNode }
 
   TKeyNode = record
     key: PChar;
@@ -40,69 +31,46 @@ type
     function Create(key: PChar; keyLen: integer): PKeyNode; inline;
     procedure Destroy(node: PKeyNode); inline;
   end;
-
+}
   PIarDict = ^TIarDict;
 
   { TIarDict }
 
   TIarDict = record
     private
-    table: PPKeyNode;
-    icap: integer;
-    FCapacity, FKeyNum: integer;
+    table: PPChar;
+    icap: NativeUInt;
+    FCapacity, FKeyNum: NativeUInt;
     FHash: THash;
 
     procedure Grow; inline;
     procedure Shrink; inline;
-    procedure Resize(cap: integer);
-    function FindNode(key: PChar; keyLen: integer;
-      out block: integer; out prev: PKeyNode): PKeyNode; inline;
+    procedure Resize(cap: NativeUInt);
+    function FindNode(key: PChar; keyLen: NativeUInt;
+      out block: NativeUInt; out prev: PChar): PChar; inline;
 
     public
     procedure Init(hash: THash);
     procedure Clear;
-    function UsedBlocks: integer; inline;
-    function Find(key: PChar; keyLen: integer; out value: Pointer): boolean;
-    function Remove(key: PChar; keyLen: integer): boolean;
-    function Insert(key: PChar; keyLen: integer; value: Pointer = nil): integer;
+    function UsedBlocks: NativeUInt; inline;
+    function Find(key: PChar; keyLen: NativeUInt; out value: Pointer): boolean;
+    function Remove(key: PChar; keyLen: NativeUInt): boolean;
+    function Insert(key: PChar; keyLen: NativeUInt; value: Pointer = nil): integer;
 
-    property keyNum: integer read FKeyNum;
-    property capacity: integer read FCapacity;
+    property keyNum: NativeUInt read FKeyNum;
+    property capacity: NativeUInt read FCapacity;
   end;
+
+  function KN_Create(key: PChar; keyLen: NativeUInt): PChar; inline;
+  function KN_Next(kn: PChar): PPChar; inline;
+  function KN_KeyLen(kn: PChar): PNativeUInt; inline;
+  function KN_Key(kn: PChar): PChar; inline;
+  function KN_Value(kn: PChar): PPointer; inline;
 
 implementation
 
 const
   BASE_CAPACITY = 1 shl 3; (* 8 *)
-
-{ TKeyNode }
-
-function TKeyNode.Create(key: PChar; keyLen: integer): PKeyNode;
-var
-  kn: PKeyNode;
-begin
-  kn := AllocMem(SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(Pointer) + keyLen);
-  (* Copy key *)
-  Move(key^, (kn + SizeOf(PChar) + SizeOf(NativeUInt))^, keyLen);
-
-  kn.keyLen := keyLen;
-  Result := kn;
-end;
-
-procedure TKeyNode.Destroy(node: PKeyNode);
-var
-  nn: PKeyNode;
-begin
-  while node <> nil do
-  begin
-    nn := node.Next;
-
-    if node.key <> nil then
-      FreeMem(node.key);
-    FreeMem(node);
-    node := nn;
-  end;
-end;
 
 { TIarDict }
 
@@ -119,22 +87,22 @@ begin
       Resize(FCapacity div 2);
 end;
 
-procedure TIarDict.Resize(cap: integer);
+procedure TIarDict.Resize(cap: NativeUInt);
 var
-  i, bn: integer;
-  tbl: PPKeyNode;
-  kn, nn: PKeyNode;
+  i, bn: NativeUInt;
+  tbl: PPChar;
+  kn, nn: PChar;
 begin
-  tbl := AllocMem(SizeOf(PKeyNode) * cap);
+  tbl := AllocMem(SizeOf(PChar) * cap);
   for i := 0 to FCapacity - 1 do
     begin
       kn := table[i];
       while kn <> nil do
       begin
-        nn := kn.Next;
+        nn := KN_Next(kn)^;
         (* Rehash and insert *)
-        bn := FHash(kn.key, kn.keyLen) and (cap - 1);
-        kn.Next := tbl[bn];
+        bn := FHash(KN_Key(kn), KN_KeyLen(kn)^) and (cap - 1);
+        KN_Next(kn)^ := tbl[bn];
         tbl[bn] := kn;
         kn := nn;
       end;
@@ -146,11 +114,11 @@ begin
   FCapacity := cap;
 end;
 
-function TIarDict.FindNode(key: PChar; keyLen: integer;
-  out block: integer; out prev: PKeyNode): PKeyNode;
+function TIarDict.FindNode(key: PChar; keyLen: NativeUInt;
+  out block: NativeUInt; out prev: PChar): PChar;
 var
-  bn: integer;
-  kn, pn: PKeyNode;
+  bn: NativeUInt;
+  kn, pn: PChar;
 begin
   pn := nil;
   bn := FHash(key, keyLen) and (FCapacity - 1);
@@ -159,13 +127,13 @@ begin
 
   while kn <> nil do
   begin
-    if (kn.keyLen = keylen) and (CompareMem(kn.key, key, keyLen) = True) then
+    if (KN_KeyLen(kn)^ = keylen) and (CompareMem(KN_Key(kn), key, keyLen) = True) then
     begin
       prev := pn;
       Exit(kn);
     end;
     pn := kn;
-    kn := kn.Next;
+    kn := KN_Next(kn)^;
   end;
 
   prev := pn;
@@ -177,24 +145,32 @@ begin
   icap := 0;
   FCapacity := BASE_CAPACITY;
   FKeyNum := 0;
-  table := AllocMem(SizeOf(PKeyNode) * FCapacity);
+  table := AllocMem(SizeOf(PChar) * FCapacity);
   Fhash := hash;
 end;
 
 procedure TIarDict.Clear;
 var
   i: integer;
+  kn, nn: PChar;
 begin
   for i := 0 to FCapacity - 1 do
-    if table[i] <> nil then
-      TKeyNode.Destroy(table[i]);
+  begin
+    kn := table[i];
+    while kn <> nil do
+    begin
+      nn := KN_Next(kn)^;
+      FreeMem(kn);
+      kn := nn;
+    end;
+  end;
 
   FreeMem(table);
 end;
 
-function TIarDict.UsedBlocks: integer;
+function TIarDict.UsedBlocks: NativeUInt;
 var
-  i: integer;
+  i: NativeUInt;
 begin
   Result := 0;
   for i := 0 to FCapacity - 1 do
@@ -202,10 +178,10 @@ begin
       Inc(Result);
 end;
 
-function TIarDict.Find(key: PChar; keyLen: integer; out value: Pointer): boolean;
+function TIarDict.Find(key: PChar; keyLen: NativeUInt; out value: Pointer): boolean;
 var
-  bn: integer;
-  kn, pn: PKeyNode;
+  bn: NativeUInt;
+  kn, pn: PChar;
 begin
   value := nil;
   if (key = nil) or (keyLen = 0) then
@@ -214,17 +190,17 @@ begin
   kn := FindNode(key, keyLen, bn, pn);
   if kn <> nil then
   begin
-    value := kn.Value;
+    value := KN_value(kn)^;
     Result := true;
   end
   else
     Result := false;
 end;
 
-function TIarDict.Remove(key: PChar; keyLen: integer): boolean;
+function TIarDict.Remove(key: PChar; keyLen: NativeUInt): boolean;
 var
-  bn: integer;
-  kn, pn: PKeyNode;
+  bn: NativeUInt;
+  kn, pn: PChar;
 begin
   if (key = nil) or (keyLen = 0) then
     Exit(false);
@@ -233,10 +209,9 @@ begin
   if kn <> nil then
   begin
     if pn <> nil then
-      pn.Next := kn.Next
+      KN_Next(pn)^ := KN_Next(kn)^
     else
-      table[bn] := kn.Next;
-    FreeMem(kn.key);
+      table[bn] := KN_Next(kn)^;
     Freemem(kn);
     Dec(FKeyNum);
     Shrink();
@@ -246,10 +221,10 @@ begin
     Result := false;
 end;
 
-function TIarDict.Insert(key: PChar; keyLen: integer; value: Pointer = nil): integer;
+function TIarDict.Insert(key: PChar; keyLen: NativeUInt; value: Pointer = nil): integer;
 var
-  bn: integer;
-  kn, pn: PKeyNode;
+  bn: NativeUInt;
+  kn, pn: PChar;
 begin
   if (key = nil) or (keyLen = 0) then
     Exit(-1);
@@ -257,20 +232,60 @@ begin
   kn := FindNode(key, keyLen, bn, pn);
   if kn <> nil then
   begin
-    kn.Value := value;
+    KN_Value(kn)^ := value;
     Exit(0);
   end
   else
   begin
     Inc(FKeyNum);
-    kn := TKeyNode.Create(key, keyLen);
-    kn.Next := table[bn];
-    kn.Value := value;
+    kn := KN_Create(key, keyLen);
+    KN_Next(kn)^ := table[bn];
+    KN_Value(kn)^ := value;
     table[bn] := kn;
     Grow();
     Exit(1);
   end;
 
+end;
+
+{ KeyNode Layout
+next   - PChar       offset - 0
+keeLen - NativeUInt  offset - SizeOf(PChar)
+key    - char[]      offset - SizeOf(PChar) + SizeOf(NativeUInt)
+value  - Pointer     offset - SizeOf(PChar) + SizeOf(NativeUInt) + keyLen
+
+Total -  SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(Pointer) + keyLen
+}
+
+function KN_Create(key: PChar; keyLen: NativeUInt): PChar;
+var
+  kn: PChar;
+begin
+  kn := AllocMem(SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(Pointer) + keyLen);
+  (* Copy key *)
+  Move(key^, (kn + SizeOf(PChar) + SizeOf(NativeUInt))^, keyLen);
+  PNativeUInt(kn + SizeOf(PChar))^ := keyLen;
+  Result := kn;
+end;
+
+function KN_Next(kn: PChar): PPChar;
+begin
+  Result := PPChar(kn);
+end;
+
+function KN_KeyLen(kn: PChar): PNativeUInt;
+begin
+  Result := PNativeUInt(kn + SizeOf(PChar));
+end;
+
+function KN_Key(kn: PChar): PChar;
+begin
+  Result := kn + SizeOf(PChar) + SizeOf(NativeUInt);
+end;
+
+function KN_Value(kn: PChar): PPointer;
+begin
+  Result := PPointer(kn + SizeOf(PChar) + SizeOf(NativeUInt) + KN_KeyLen(kn)^);
 end;
 
 initialization
