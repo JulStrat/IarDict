@@ -18,6 +18,15 @@ uses
 type
   THash = function(key: PChar; keyLen: NativeUInt): DWord;
 
+  { KeyNode Layout
+  next   - PChar       offset - 0
+  keeLen - NativeUInt  offset - SizeOf(PChar)
+  key    - char[]      offset - SizeOf(PChar) + SizeOf(NativeUInt)
+  value  - Pointer     offset - SizeOf(PChar) + SizeOf(NativeUInt) + keyLen
+
+  Total -  SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(Pointer) + keyLen
+  }
+
   PPKeyNode = ^PKeyNode;
   PKeyNode = ^TKeyNode;
 
@@ -72,13 +81,9 @@ function TKeyNode.Create(key: PChar; keyLen: integer): PKeyNode;
 var
   kn: PKeyNode;
 begin
-  kn := AllocMem(SizeOf(TKeyNode));
-
+  kn := AllocMem(SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(Pointer) + keyLen);
   (* Copy key *)
-  GetMem(kn.key, keyLen);
-  Move(key^, (kn.key)^, keyLen);
-  (* Copy ref *)
-  (* kn.key := key; *)
+  Move(key^, (kn + SizeOf(PChar) + SizeOf(NativeUInt))^, keyLen);
 
   kn.keyLen := keyLen;
   Result := kn;
