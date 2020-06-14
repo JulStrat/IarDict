@@ -47,7 +47,7 @@ type
     procedure Shrink; inline;
     procedure Resize(cap: NativeUInt);
     function FindNode(key: PChar; keyLen: NativeUInt;
-      out block: NativeUInt; out prev: PChar): PChar; inline;
+      out block: NativeUInt; out prev: PChar): PChar;
 
     public
     procedure Init(hash: THash);
@@ -67,6 +67,7 @@ type
   function KN_Key(kn: PChar): PChar; inline;
   function KN_Value(kn: PChar): PPointer; inline;
 
+  function FastRange32(x: DWord; r: DWord): DWord; inline;
 implementation
 
 const
@@ -101,7 +102,8 @@ begin
       begin
         nn := KN_Next(kn)^;
         (* Rehash and insert *)
-        bn := FHash(KN_Key(kn), KN_KeyLen(kn)^) and (cap - 1);
+        //bn := FHash(KN_Key(kn), KN_KeyLen(kn)^) and (cap - 1);
+        bn := FastRange32(FHash(KN_Key(kn), KN_KeyLen(kn)^), cap);
         KN_Next(kn)^ := tbl[bn];
         tbl[bn] := kn;
         kn := nn;
@@ -121,7 +123,8 @@ var
   kn, pn: PChar;
 begin
   pn := nil;
-  bn := FHash(key, keyLen) and (FCapacity - 1);
+  //bn := FHash(key, keyLen) and (FCapacity - 1);
+  bn := FastRange32(FHash(key, keyLen), FCapacity);
   kn := table[bn];
   block := bn;
 
@@ -261,9 +264,9 @@ function KN_Create(key: PChar; keyLen: NativeUInt): PChar;
 var
   kn: PChar;
 begin
-  kn := AllocMem(SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(Pointer) + keyLen);
+  kn := AllocMem((SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(Pointer)) + keyLen);
   (* Copy key *)
-  Move(key^, (kn + SizeOf(PChar) + SizeOf(NativeUInt))^, keyLen);
+  Move(key^, (kn + (SizeOf(PChar) + SizeOf(NativeUInt)))^, keyLen);
   PNativeUInt(kn + SizeOf(PChar))^ := keyLen;
   Result := kn;
 end;
@@ -280,12 +283,17 @@ end;
 
 function KN_Key(kn: PChar): PChar;
 begin
-  Result := kn + SizeOf(PChar) + SizeOf(NativeUInt);
+  Result := kn + (SizeOf(PChar) + SizeOf(NativeUInt));
 end;
 
 function KN_Value(kn: PChar): PPointer;
 begin
-  Result := PPointer(kn + SizeOf(PChar) + SizeOf(NativeUInt) + KN_KeyLen(kn)^);
+  Result := PPointer(kn + (SizeOf(PChar) + SizeOf(NativeUInt)) + KN_KeyLen(kn)^);
+end;
+
+function FastRange32(x: DWord; r: DWord): DWord; inline;
+begin
+  Result := DWord((QWord(x) * QWord(r)) shr 32);
 end;
 
 initialization

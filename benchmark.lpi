@@ -77,6 +77,9 @@
             </Debugging>
             <LinkSmart Value="True"/>
           </Linking>
+          <Other>
+            <CustomOptions Value="-al"/>
+          </Other>
         </CompilerOptions>
       </Item3>
     </BuildModes>
