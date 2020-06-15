@@ -24,7 +24,7 @@ implementation
 
 {$Q-}{$R-}
 
-function FNV1A_Hash_Jesteress(key: PChar; keyLen: NativeUInt): DWord;
+function FNV1A_Hash_Jesteress(key: PChar; keyLen: NativeUInt): DWord; inline;
 var
   hash32: DWord;
 begin
@@ -59,7 +59,7 @@ begin
 
 end;
 
-function FNV1A_Hash_Meiyan(key: PChar; keyLen: NativeUInt): DWord;
+function FNV1A_Hash_Meiyan(key: PChar; keyLen: NativeUInt): DWord; inline;
 var
   hash32: DWord;
 begin
@@ -96,7 +96,7 @@ begin
 
 end;
 
-function FNV1A_Hash_Mantis(key: PChar; keyLen: NativeUInt): DWord;
+function FNV1A_Hash_Mantis(key: PChar; keyLen: NativeUInt): DWord; inline;
 var
   hash32: DWord;
   p: PChar;

@@ -1,14 +1,17 @@
 unit iardict;
 {
-  Simple Hash Table
+  TIarDict (Iaramaz Dictionary) - Separate chaining Hash Table
+  https://en.wikipedia.org/wiki/Hash_table#Separate_chaining
 }
 
 {$ifdef FPC}
 {$mode delphi}
+{$macro on}
 {$endif}
 
 {$inline on}
 {$pointermath on}
+{$undef USE_MACRO}
 
 interface
 
@@ -18,28 +21,14 @@ uses
 type
   THash = function(key: PChar; keyLen: NativeUInt): DWord;
 
-{
-  PPKeyNode = ^PKeyNode;
-  PKeyNode = ^TKeyNode;
-
-
-  TKeyNode = record
-    key: PChar;
-    Value: Pointer;
-    Next: PKeyNode;
-    keyLen: integer;
-    function Create(key: PChar; keyLen: integer): PKeyNode; inline;
-    procedure Destroy(node: PKeyNode); inline;
-  end;
-}
   PIarDict = ^TIarDict;
 
   { TIarDict }
 
   TIarDict = record
     private
-    table: PPChar;
-    icap: NativeUInt;
+    FTable: PPChar;
+    //icap: NativeUInt;
     FCapacity, FKeyNum: NativeUInt;
     FHash: THash;
 
@@ -62,12 +51,24 @@ type
   end;
 
   function KN_Create(key: PChar; keyLen: NativeUInt): PChar; inline;
+{$ifdef USE_MACRO}
+  {$define KN_NextKN := PPChar(kn) }
+  {$define KN_NextPN := PPChar(pn) }
+  {$define KN_KeyLen := PNativeUInt(kn + SizeOf(PChar)) }
+  {$define KN_Key := (kn + (SizeOf(PChar) + SizeOf(NativeUInt))) }
+  {$define KN_Value := PPointer(kn + (SizeOf(PChar) + SizeOf(NativeUInt)) + PNativeUInt(kn + SizeOf(PChar))^) }
+{$else}
   function KN_Next(kn: PChar): PPChar; inline;
   function KN_KeyLen(kn: PChar): PNativeUInt; inline;
   function KN_Key(kn: PChar): PChar; inline;
   function KN_Value(kn: PChar): PPointer; inline;
+{$endif}
 
+
+{  A fast alternative to the modulo reduction.
+   https://github.com/lemire/fastrange  }
   function FastRange32(x: DWord; r: DWord): DWord; inline;
+
 implementation
 
 const
@@ -97,21 +98,27 @@ begin
   tbl := AllocMem(SizeOf(PChar) * cap);
   for i := 0 to FCapacity - 1 do
     begin
-      kn := table[i];
+      kn := FTable[i];
       while kn <> nil do
       begin
-        nn := KN_Next(kn)^;
         (* Rehash and insert *)
-        //bn := FHash(KN_Key(kn), KN_KeyLen(kn)^) and (cap - 1);
+        {$ifdef USE_MACRO}
+        nn := KN_NextKN^;
+        (* bn := FHash(KN_Key(kn), KN_KeyLen(kn)^) and (cap - 1); *)
+        bn := FastRange32(FHash(KN_Key, KN_KeyLen^), cap);
+        KN_NextKN^ := tbl[bn];
+        {$else}
+        nn := KN_Next(kn)^;
         bn := FastRange32(FHash(KN_Key(kn), KN_KeyLen(kn)^), cap);
         KN_Next(kn)^ := tbl[bn];
+        {$endif}
         tbl[bn] := kn;
         kn := nn;
       end;
     end;
 
-  FreeMem(table);
-  table := tbl;
+  FreeMem(FTable);
+  FTable := tbl;
 
   FCapacity := cap;
 end;
@@ -125,18 +132,23 @@ begin
   pn := nil;
   //bn := FHash(key, keyLen) and (FCapacity - 1);
   bn := FastRange32(FHash(key, keyLen), FCapacity);
-  kn := table[bn];
+  kn := FTable[bn];
   block := bn;
 
   while kn <> nil do
   begin
+    {$ifdef USE_MACRO}
+    if (KN_KeyLen^ = keylen) and (CompareMem(KN_Key, key, keyLen) = True) then
+    {$else}
     if (KN_KeyLen(kn)^ = keylen) and (CompareMem(KN_Key(kn), key, keyLen) = True) then
+    {$endif}
     begin
       prev := pn;
       Exit(kn);
     end;
     pn := kn;
-    kn := KN_Next(kn)^;
+    {$ifdef USE_MACRO} kn := KN_NextKN^;
+    {$else} kn := KN_Next(kn)^; {$endif}
   end;
 
   prev := pn;
@@ -145,30 +157,31 @@ end;
 
 procedure TIarDict.Init(hash: THash);
 begin
-  icap := 0;
+  //icap := 0;
   FCapacity := BASE_CAPACITY;
   FKeyNum := 0;
-  table := AllocMem(SizeOf(PChar) * FCapacity);
+  FTable := AllocMem(SizeOf(PChar) * FCapacity);
   Fhash := hash;
 end;
 
 procedure TIarDict.Clear;
 var
-  i: integer;
+  i: NativeUInt;
   kn, nn: PChar;
 begin
   for i := 0 to FCapacity - 1 do
   begin
-    kn := table[i];
+    kn := FTable[i];
     while kn <> nil do
     begin
-      nn := KN_Next(kn)^;
+      {$ifdef USE_MACRO} nn := KN_NextKN^;
+      {$else} nn := KN_Next(kn)^; {$endif}
       FreeMem(kn);
       kn := nn;
     end;
   end;
 
-  FreeMem(table);
+  FreeMem(FTable);
 end;
 
 function TIarDict.UsedBlocks: NativeUInt;
@@ -177,7 +190,7 @@ var
 begin
   Result := 0;
   for i := 0 to FCapacity - 1 do
-    if table[i] <> nil then
+    if FTable[i] <> nil then
       Inc(Result);
 end;
 
@@ -193,7 +206,8 @@ begin
   kn := FindNode(key, keyLen, bn, pn);
   if kn <> nil then
   begin
-    value := KN_value(kn)^;
+    {$ifdef USE_MACRO} value := KN_Value^;
+    {$else} value := KN_value(kn)^; {$endif}
     Result := true;
   end
   else
@@ -211,10 +225,18 @@ begin
   kn := FindNode(key, keyLen, bn, pn);
   if kn <> nil then
   begin
+    {$ifdef USE_MACRO}
+    if pn <> nil then
+      KN_NextPN^ := KN_NextKN^
+    else
+      FTable[bn] := KN_NextKN^;
+    {$else}
     if pn <> nil then
       KN_Next(pn)^ := KN_Next(kn)^
     else
-      table[bn] := KN_Next(kn)^;
+      FTable[bn] := KN_Next(kn)^;
+    {$endif}
+
     Freemem(kn);
     Dec(FKeyNum);
     Shrink();
@@ -235,16 +257,23 @@ begin
   kn := FindNode(key, keyLen, bn, pn);
   if kn <> nil then
   begin
-    KN_Value(kn)^ := value;
+    {$ifdef USE_MACRO} KN_Value^ := value;
+    {$else} KN_Value(kn)^ := value; {$endif}
     Exit(0);
   end
   else
   begin
     Inc(FKeyNum);
     kn := KN_Create(key, keyLen);
-    KN_Next(kn)^ := table[bn];
+    {$ifdef USE_MACRO}
+    KN_NextKN^ := FTable[bn];
+    KN_Value^ := value;
+    {$else}
+    KN_Next(kn)^ := FTable[bn];
     KN_Value(kn)^ := value;
-    table[bn] := kn;
+    {$endif}
+
+    FTable[bn] := kn;
     Grow();
     Exit(1);
   end;
@@ -264,32 +293,37 @@ function KN_Create(key: PChar; keyLen: NativeUInt): PChar;
 var
   kn: PChar;
 begin
-  kn := AllocMem((SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(Pointer)) + keyLen);
+  kn := GetMem((SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(Pointer)) + keyLen);
   (* Copy key *)
+  KN_Next(kn)^ := nil;
+  KN_KeyLen(kn)^ := keyLen;
   Move(key^, (kn + (SizeOf(PChar) + SizeOf(NativeUInt)))^, keyLen);
-  PNativeUInt(kn + SizeOf(PChar))^ := keyLen;
+  KN_Value(kn)^ := nil;
   Result := kn;
 end;
 
-function KN_Next(kn: PChar): PPChar;
+{$ifndef USE_MACRO}
+function KN_Next(kn: PChar): PPChar; inline;
 begin
   Result := PPChar(kn);
 end;
 
-function KN_KeyLen(kn: PChar): PNativeUInt;
+function KN_KeyLen(kn: PChar): PNativeUInt; inline;
 begin
   Result := PNativeUInt(kn + SizeOf(PChar));
 end;
 
-function KN_Key(kn: PChar): PChar;
+function KN_Key(kn: PChar): PChar; inline;
 begin
   Result := kn + (SizeOf(PChar) + SizeOf(NativeUInt));
 end;
 
-function KN_Value(kn: PChar): PPointer;
+function KN_Value(kn: PChar): PPointer; inline;
 begin
-  Result := PPointer(kn + (SizeOf(PChar) + SizeOf(NativeUInt)) + KN_KeyLen(kn)^);
+  Result := PPointer(kn + (SizeOf(PChar) + SizeOf(NativeUInt)) +
+    PNativeUInt(kn + SizeOf(PChar))^);
 end;
+{$endif}
 
 function FastRange32(x: DWord; r: DWord): DWord; inline;
 begin
