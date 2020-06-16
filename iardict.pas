@@ -1,17 +1,18 @@
 unit iardict;
 {
-  TIarDict (Iaramaz Dictionary) - Separate chaining Hash Table
-  https://en.wikipedia.org/wiki/Hash_table#Separate_chaining
+  TIarDict (Iaramaz Dictionary) - Simple & Bad separate chaining Hash Table.
+  Copyright (C) 2020, I. Kakoulidis, all right reserved.
 }
 
 {$ifdef FPC}
 {$mode delphi}
 {$macro on}
+{$undef USE_MACRO}
 {$endif}
 
 {$inline on}
 {$pointermath on}
-{$undef USE_MACRO}
+
 
 interface
 
@@ -45,6 +46,7 @@ type
     function Find(key: PChar; keyLen: NativeUInt; out value: Pointer): boolean;
     function Remove(key: PChar; keyLen: NativeUInt): boolean;
     function Insert(key: PChar; keyLen: NativeUInt; value: Pointer = nil): integer;
+    function SetValues(value: Pointer): NativeUInt;
 
     property keyNum: NativeUInt read FKeyNum;
     property capacity: NativeUInt read FCapacity;
@@ -280,6 +282,30 @@ begin
 
 end;
 
+function TIarDict.SetValues(value: Pointer): NativeUInt;
+var
+  i: NativeUInt;
+  kn, nn: PChar;
+begin
+  Result := 0;
+  for i := 0 to FCapacity - 1 do
+  begin
+    kn := FTable[i];
+    while kn <> nil do
+    begin
+      {$ifdef USE_MACRO}
+      nn := KN_NextKN^;
+      KN_Value^ := value;
+      {$else}
+      nn := KN_Next(kn)^;
+      KN_Value(kn)^ := value;
+      {$endif}
+      Inc(Result);
+      kn := nn;
+    end;
+  end;
+end;
+
 { KeyNode Layout
 next   - PChar       offset - 0
 keeLen - NativeUInt  offset - SizeOf(PChar)
@@ -295,10 +321,18 @@ var
 begin
   kn := GetMem((SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(Pointer)) + keyLen);
   (* Copy key *)
+  {$ifndef USE_MACRO}
   KN_Next(kn)^ := nil;
   KN_KeyLen(kn)^ := keyLen;
-  Move(key^, (kn + (SizeOf(PChar) + SizeOf(NativeUInt)))^, keyLen);
   KN_Value(kn)^ := nil;
+  {$else}
+  KN_NextKN^ := nil;
+  KN_KeyLen^ := keyLen;
+  KN_Value^ := nil;
+  {$endif}
+
+  Move(key^, (kn + (SizeOf(PChar) + SizeOf(NativeUInt)))^, keyLen);
+
   Result := kn;
 end;
 

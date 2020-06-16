@@ -87,6 +87,9 @@ begin
   WriteLn('Used blocks - ', t.UsedBlocks);
   WriteLn(Format('Load factor - %g', [t.keyNum / t.capacity]));
 
+  t.SetValues(Pointer(0));
+  WriteLn('Ticks with SetValues - ', GetTickCount64() - start);
+
   t.Clear();
   WriteLn('Ticks with free - ', GetTickCount64() - start);
 
