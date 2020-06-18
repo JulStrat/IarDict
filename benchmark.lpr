@@ -75,11 +75,11 @@ begin
       WriteLn('Error.');
       break;
     end;
-
+{
     for i := 0 to Length(rnd) - 1 do
       rnd[i] := Random();
     t.Remove(PChar(@rnd[0]), SizeOf(rnd));
-
+}
   end;
   WriteLn('      Ticks - ', GetTickCount64() - start);
   WriteLn('       Keys - ', t.keyNum);
@@ -116,10 +116,11 @@ begin
       WriteLn('Error.');
       break;
     end;
-
+{
     for i := 0 to Length(rnd) - 1 do
       rnd[i] := Random();
     gdict.Remove(rnd);
+}
   end;
   WriteLn('Ticks - ', GetTickCount64() - start);
   WriteLn('Keys - ', gdict.Count);

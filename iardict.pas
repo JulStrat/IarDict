@@ -29,7 +29,6 @@ type
   TIarDict = record
     private
     FTable: PPChar;
-    //icap: NativeUInt;
     FCapacity, FKeyNum: NativeUInt;
     FHash: THash;
 
@@ -66,6 +65,7 @@ type
   function KN_Value(kn: PChar): PPointer; inline;
 {$endif}
 
+function CmpMem(a, b: PChar; len: NativeUInt): boolean; inline;
 
 {  A fast alternative to the modulo reduction.
    https://github.com/lemire/fastrange  }
@@ -80,8 +80,8 @@ const
 
 procedure TIarDict.Grow;
 begin
-  if FKeyNum > FCapacity then
-    Resize(2*FCapacity);
+  if FKeyNum >= FCapacity then
+    Resize(7*(FCapacity shr 2));
 end;
 
 procedure TIarDict.Shrink;
@@ -142,7 +142,7 @@ begin
     {$ifdef USE_MACRO}
     if (KN_KeyLen^ = keylen) and (CompareMem(KN_Key, key, keyLen) = True) then
     {$else}
-    if (KN_KeyLen(kn)^ = keylen) and (CompareMem(KN_Key(kn), key, keyLen) = True) then
+    if (KN_KeyLen(kn)^ = keylen) and (CmpMem(KN_Key(kn), key, keyLen) = True) then
     {$endif}
     begin
       prev := pn;
@@ -159,7 +159,6 @@ end;
 
 procedure TIarDict.Init(hash: THash);
 begin
-  //icap := 0;
   FCapacity := BASE_CAPACITY;
   FKeyNum := 0;
   FTable := AllocMem(SizeOf(PChar) * FCapacity);
@@ -308,11 +307,11 @@ end;
 
 { KeyNode Layout
 next   - PChar       offset - 0
-keeLen - NativeUInt  offset - SizeOf(PChar)
-key    - char[]      offset - SizeOf(PChar) + SizeOf(NativeUInt)
-value  - Pointer     offset - SizeOf(PChar) + SizeOf(NativeUInt) + keyLen
+value  - Pointer     offset - SizeOf(PChar)
+keeLen - NativeUInt  offset - SizeOf(PChar) + SizeOf(NativeUInt)
+key    - char[]      offset - SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(NativeUInt)
 
-Total -  SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(Pointer) + keyLen
+Total -  SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(NativeUInt) + keyLen
 }
 
 function KN_Create(key: PChar; keyLen: NativeUInt): PChar;
@@ -331,7 +330,7 @@ begin
   KN_Value^ := nil;
   {$endif}
 
-  Move(key^, (kn + (SizeOf(PChar) + SizeOf(NativeUInt)))^, keyLen);
+  Move(key^, (kn + (SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(NativeUInt)))^, keyLen);
 
   Result := kn;
 end;
@@ -342,26 +341,62 @@ begin
   Result := PPChar(kn);
 end;
 
+function KN_Value(kn: PChar): PPointer; inline;
+begin
+  Result := PPointer(kn + SizeOf(PChar));
+end;
+
 function KN_KeyLen(kn: PChar): PNativeUInt; inline;
 begin
-  Result := PNativeUInt(kn + SizeOf(PChar));
+  Result := PNativeUInt(kn + (SizeOf(PChar) + SizeOf(NativeUInt)));
 end;
 
 function KN_Key(kn: PChar): PChar; inline;
 begin
-  Result := kn + (SizeOf(PChar) + SizeOf(NativeUInt));
+  Result := kn + (SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(NativeUInt));
 end;
 
-function KN_Value(kn: PChar): PPointer; inline;
-begin
-  Result := PPointer(kn + (SizeOf(PChar) + SizeOf(NativeUInt)) +
-    PNativeUInt(kn + SizeOf(PChar))^);
-end;
 {$endif}
 
 function FastRange32(x: DWord; r: DWord): DWord; inline;
 begin
   Result := DWord((QWord(x) * QWord(r)) shr 32);
+end;
+
+function CmpMem(a, b: PChar; len: NativeUInt): boolean; inline;
+begin
+  while len >= 8 do
+  begin
+    if PWord(a)^ <> PWord(b)^ then Exit(false);
+    Inc(a, 2); Inc(b, 2); Dec(len, 2);
+    if PWord(a)^ <> PWord(b)^ then Exit(false);
+    Inc(a, 2); Inc(b, 2); Dec(len, 2);
+    if PWord(a)^ <> PWord(b)^ then Exit(false);
+    Inc(a, 2); Inc(b, 2); Dec(len, 2);
+    if PWord(a)^ <> PWord(b)^ then Exit(false);
+    Inc(a, 2); Inc(b, 2); Dec(len, 2);
+  end;
+
+  if (len and 4) <> 0 then
+  begin
+    if PWord(a)^ <> PWord(b)^ then Exit(false);
+    Inc(a, 2); Inc(b, 2); Dec(len, 2);
+    if PWord(a)^ <> PWord(b)^ then Exit(false);
+    Inc(a, 2); Inc(b, 2); Dec(len, 2);
+  end;
+
+  if (len and 2) <> 0 then
+  begin
+    if PWord(a)^ <> PWord(b)^ then Exit(false);
+    Inc(a, 2); Inc(b, 2); Dec(len, 2);
+  end;
+
+  if (len and 1) <> 0 then
+  begin
+    if a^ <> b^ then Exit(false);
+  end;
+  Exit(true);
+
 end;
 
 initialization
