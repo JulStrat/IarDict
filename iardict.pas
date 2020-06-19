@@ -39,7 +39,8 @@ type
       out block: NativeUInt; out prev: PChar): PChar;
 
     public
-    procedure Init(hash: THash);
+    procedure Init(hash: THash); overload;
+    procedure Init(hash: THash; cap: NativeUInt); overload;
     procedure Clear;
     function UsedBlocks: NativeUInt; inline;
     function Find(key: PChar; keyLen: NativeUInt; out value: Pointer): boolean;
@@ -65,7 +66,9 @@ type
   function KN_Value(kn: PChar): PPointer; inline;
 {$endif}
 
-function CmpMem(a, b: PChar; len: NativeUInt): boolean; inline;
+(* function CmpMem(a, b: PChar; len: NativeUInt): boolean; inline; *)
+function MemEq(a, b: PChar; len: NativeUInt): boolean; inline;
+(* procedure MemCpy(src, dst: PChar; len: NativeUInt); inline; *)
 
 {  A fast alternative to the modulo reduction.
    https://github.com/lemire/fastrange  }
@@ -80,7 +83,7 @@ const
 
 procedure TIarDict.Grow;
 begin
-  if FKeyNum >= FCapacity then
+  if FKeyNum > FCapacity then
     Resize(7*(FCapacity shr 2));
 end;
 
@@ -142,7 +145,8 @@ begin
     {$ifdef USE_MACRO}
     if (KN_KeyLen^ = keylen) and (CompareMem(KN_Key, key, keyLen) = True) then
     {$else}
-    if (KN_KeyLen(kn)^ = keylen) and (CmpMem(KN_Key(kn), key, keyLen) = True) then
+    if (KN_KeyLen(kn)^ = keylen) and (MemEq(KN_Key(kn), key, keyLen) = True) then
+    //if (KN_KeyLen(kn)^ = keylen) and (CompareMem(KN_Key(kn), key, keyLen) = True) then
     {$endif}
     begin
       prev := pn;
@@ -162,6 +166,16 @@ begin
   FCapacity := BASE_CAPACITY;
   FKeyNum := 0;
   FTable := AllocMem(SizeOf(PChar) * FCapacity);
+  Fhash := hash;
+end;
+
+procedure TIarDict.Init(hash: THash; cap: NativeUInt);
+begin
+  if cap < BASE_CAPACITY then
+    cap := BASE_CAPACITY;
+  FCapacity := cap;
+  FKeyNum := 0;
+  FTable := AllocMem(SizeOf(PChar) * cap);
   Fhash := hash;
 end;
 
@@ -322,8 +336,9 @@ begin
   (* Copy key *)
   {$ifndef USE_MACRO}
   KN_Next(kn)^ := nil;
-  KN_KeyLen(kn)^ := keyLen;
   KN_Value(kn)^ := nil;
+  KN_KeyLen(kn)^ := keyLen;
+
   {$else}
   KN_NextKN^ := nil;
   KN_KeyLen^ := keyLen;
@@ -331,7 +346,7 @@ begin
   {$endif}
 
   Move(key^, (kn + (SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(NativeUInt)))^, keyLen);
-
+  (* MemCpy(key, kn + (SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(NativeUInt)), keyLen); *)
   Result := kn;
 end;
 
@@ -363,26 +378,32 @@ begin
   Result := DWord((QWord(x) * QWord(r)) shr 32);
 end;
 
-function CmpMem(a, b: PChar; len: NativeUInt): boolean; inline;
+function MemEq(a, b: PChar; len: NativeUInt): boolean; inline;
 begin
-  while len >= 8 do
+  while len >= 16 do
   begin
-    if PWord(a)^ <> PWord(b)^ then Exit(false);
-    Inc(a, 2); Inc(b, 2); Dec(len, 2);
-    if PWord(a)^ <> PWord(b)^ then Exit(false);
-    Inc(a, 2); Inc(b, 2); Dec(len, 2);
-    if PWord(a)^ <> PWord(b)^ then Exit(false);
-    Inc(a, 2); Inc(b, 2); Dec(len, 2);
-    if PWord(a)^ <> PWord(b)^ then Exit(false);
-    Inc(a, 2); Inc(b, 2); Dec(len, 2);
+    if PDWord(a)^ <> PDWord(b)^ then Exit(false);
+    Inc(a, 4); Inc(b, 4); Dec(len, 4);
+    if PDWord(a)^ <> PDWord(b)^ then Exit(false);
+    Inc(a, 4); Inc(b, 4); Dec(len, 4);
+    if PDWord(a)^ <> PDWord(b)^ then Exit(false);
+    Inc(a, 4); Inc(b, 4); Dec(len, 4);
+    if PDWord(a)^ <> PDWord(b)^ then Exit(false);
+    Inc(a, 4); Inc(b, 4); Dec(len, 4);
   end;
+
+  if (len and 8) <> 0 then
+  begin
+    if PDWord(a)^ <> PDWord(b)^ then Exit(false);
+    Inc(a, 4); Inc(b, 4); Dec(len, 4);
+    if PDWord(a)^ <> PDWord(b)^ then Exit(false);
+    Inc(a, 4); Inc(b, 4); Dec(len, 4);
+  end;  
 
   if (len and 4) <> 0 then
   begin
-    if PWord(a)^ <> PWord(b)^ then Exit(false);
-    Inc(a, 2); Inc(b, 2); Dec(len, 2);
-    if PWord(a)^ <> PWord(b)^ then Exit(false);
-    Inc(a, 2); Inc(b, 2); Dec(len, 2);
+    if PDWord(a)^ <> PDWord(b)^ then Exit(false);
+    Inc(a, 4); Inc(b, 4); Dec(len, 4);
   end;
 
   if (len and 2) <> 0 then
@@ -398,7 +419,48 @@ begin
   Exit(true);
 
 end;
+(*
+procedure MemCpy(src, dst: PChar; len: NativeUInt); inline;
+begin
+  while len >= 16 do
+  begin
+    PDWord(dst)^ := PDWord(src)^;
+    Inc(src, 4); Inc(dst, 4); Dec(len, 4);
+    PDWord(dst)^ := PDWord(src)^;
+    Inc(src, 4); Inc(dst, 4); Dec(len, 4);
+    PDWord(dst)^ := PDWord(src)^;
+    Inc(src, 4); Inc(dst, 4); Dec(len, 4);
+    PDWord(dst)^ := PDWord(src)^;
+    Inc(src, 4); Inc(dst, 4); Dec(len, 4);
+  end;
+  
+  if (len and 8) <> 0 then
+  begin
+    PDWord(dst)^ := PDWord(src)^;
+    Inc(src, 4); Inc(dst, 4); Dec(len, 4);
+    PDWord(dst)^ := PDWord(src)^;
+    Inc(src, 4); Inc(dst, 4); Dec(len, 4);
+  end;
+  
+  if (len and 4) <> 0 then
+  begin
+    PDWord(dst)^ := PDWord(src)^;
+    Inc(src, 4); Inc(dst, 4); Dec(len, 4);
+  end;
 
+  if (len and 2) <> 0 then
+  begin
+    PWord(dst)^ := PWord(src)^;
+    Inc(src, 2); Inc(dst, 2); Dec(len, 2);
+  end;
+
+  if (len and 1) <> 0 then
+  begin
+    dst^ := src^;
+  end;
+
+end;
+*)
 initialization
 
 finalization

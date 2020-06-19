@@ -11,7 +11,8 @@ uses
   Classes, SysUtils, iardict, {ghashmap ,} generics.collections, hash ;
 
 type
-  TRnd = array[0..35] of Extended;
+  TRnd = array[0..15] of QWord;
+  TArrRnd = array[0..1000000-1] of TRnd;
 
 var
   t: TIarDict;
@@ -25,10 +26,15 @@ var
 
   frDict: TStringList;
   wrd: String;
+  arrRnd: TArrRnd;
 
 begin
-  start := GetTickCount64();
 
+  for counter := 0 to 1000000-1 do
+    for i := 0 to Length(TRnd) - 1 do
+      arrRnd[counter][i] := Random(QWord.MaxValue);
+
+  start := GetTickCount64();
 
   {
   for counter := 1 to 10000000 do
@@ -57,15 +63,15 @@ begin
   }
 
   start := GetTickCount64();
-  t.Init(FNV1A_Hash_Meiyan);
-  WriteLn('Insert 10000000 random ...');
-  for counter := 1 to 10000000 do
+  t.Init(FNV1A_Hash_Meiyan, 1000000);
+  WriteLn('Key size - ', SizeOf(TRnd));
+  WriteLn('--------');
+  WriteLn('IarDict - Insert 1000000 random ...');
+  for counter := 0 to 1000000-1 do
   begin
-    for i := 0 to Length(rnd) - 1 do
-      rnd[i] := Random();
-    t.Insert(PChar(@rnd[0]), SizeOf(rnd), Pointer(i));
+    t.Insert(PChar(@arrRnd[counter][0]), SizeOf(TRnd), Pointer(i));
 
-    if not t.Find(PChar(@rnd[0]), SizeOf(rnd), v) then
+    if not t.Find(PChar(@arrRnd[counter][0]), SizeOf(TRnd), v) then
     begin
       WriteLn('Error.');
       break;
@@ -95,18 +101,15 @@ begin
 
   //halt(70);
 
-  gdict := TDictionary<TRnd, Pointer>.Create();
+  gdict := TDictionary<TRnd, Pointer>.Create(1000000);
   start := GetTickCount64();
-  WriteLn('..........................................');
-  WriteLn('Insert 10000000 random into TDictionary...');
-  for counter := 1 to 10000000 do
+  WriteLn('.......................................');
+  WriteLn('TDictionary - Insert 1000000 random ...');
+  for counter := 0 to 1000000-1 do
   begin
-    for i := 0 to Length(rnd) - 1 do
-      rnd[i] := Random();
+    gdict.AddOrSetValue(arrRnd[counter], Pointer(i));
 
-    gdict.AddOrSetValue(rnd, Pointer(i));
-
-    if not gdict.TryGetValue(rnd, v) then
+    if not gdict.TryGetValue(arrRnd[counter], v) then
     begin
       WriteLn('Error.');
       break;
@@ -128,11 +131,12 @@ begin
   FreeAndNil(gdict);
   WriteLn('Ticks wiht free - ', GetTickCount64() - start);
 
-  start := GetTickCount64();
-  WriteLn('Insert French words ...');
+
+  WriteLn('IarDict - Insert French words ...');
 
   frDict := TStringList.Create();
   frDict.LoadFromFile('dic_fr.txt');
+  start := GetTickCount64();
   t.Init(FNV1A_Hash_Meiyan);
   for wrd in frDict do
     t.Insert(PChar(wrd), Length(wrd), Pointer(0));
