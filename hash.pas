@@ -16,10 +16,12 @@ interface
 uses
   Classes, SysUtils;
 
-function FNV1A_Hash_Jesteress(key: PChar; keyLen: NativeUInt): DWord; inline;
-function FNV1A_Hash_Meiyan(key: PChar; keyLen: NativeUInt): DWord; inline;
-function FNV1A_Hash_Mantis(key: PChar; keyLen: NativeUInt): DWord; inline;
-function FNV1A_Hash_Yorikke(key: PChar; keyLen: NativeUInt): DWord; inline;
+function Hash_DJB(key: PChar; keyLen: NativeUInt): UInt32; inline;
+
+function FNV1A_Hash_Jesteress(key: PChar; keyLen: NativeUInt): UInt32; inline;
+function FNV1A_Hash_Meiyan(key: PChar; keyLen: NativeUInt): UInt32; inline;
+function FNV1A_Hash_Mantis(key: PChar; keyLen: NativeUInt): UInt32; inline;
+function FNV1A_Hash_Yorikke(key: PChar; keyLen: NativeUInt): UInt32; inline;
 
 implementation
 {$ifdef FPC}
@@ -34,181 +36,198 @@ const
 
 {$Q-}{$R-}
 
-function FNV1A_Hash_Jesteress(key: PChar; keyLen: NativeUInt): DWord; inline;
+function Hash_DJB(key: PChar; keyLen: NativeUInt): UInt32;
 var
-  hash32: DWord;
+  hash32: UInt32;
+begin
+  hash32 := 5381;
+  while keyLen > 0 do
+  begin
+    hash32 := (hash32 shl 5) + hash32 + PByte(key)^;
+    Inc(key);
+    Dec(keyLen);
+  end;
+
+  Result := hash32;
+end;
+
+function FNV1A_Hash_Jesteress(key: PChar; keyLen: NativeUInt): UInt32; inline;
+var
+  hash32: UInt32;
 begin
   hash32 := BASE_A;
 
-  while keyLen >= SizeOf(QWord) do
+  while keyLen >= SizeOf(UInt64) do (* 8 *)
   begin
     hash32 := (hash32 xor (
       (* FPC RolDWord() *)
-      (((PDWord(key))^ shl 5) or ((PDWord(key))^ shr 27)) xor
-      (PDWord(key + SizeOf(DWord)))^
+      (((PUInt32(key))^ shl 5) or ((PUInt32(key))^ shr 27)) xor
+      (PUInt32(key + SizeOf(UInt32)))^ (* 4 *)
       )) * PRIME_A;
-    Dec(keyLen, SizeOf(QWord));
-    Inc(key, SizeOf(QWord));
+    Dec(keyLen, SizeOf(UInt64)); (* 8 *)
+    Inc(key, SizeOf(UInt64)); (* 8 *)
   end;
 
-  if (keyLen and SizeOf(DWord)) <> 0 then
+  (* Remaining bytes - 0..7 *)
+  if (keyLen and SizeOf(UInt32)) <> 0 then (* 4 *)
   begin
-    hash32 := (hash32 xor (PDWord(key))^) * PRIME_A;
-    Inc(key, SizeOf(DWord));
+    hash32 := (hash32 xor (PUInt32(key))^) * PRIME_A;
+    Inc(key, SizeOf(UInt32)); (* 4 *)
   end;
 
-  if (keyLen and SizeOf(Word)) <> 0 then
+  if (keyLen and SizeOf(Word)) <> 0 then (* 2 *)
   begin
     hash32 := (hash32 xor (PWord(key))^) * PRIME_A;
-    Inc(key, SizeOf(Word));
+    Inc(key, SizeOf(Word)); (* 2 *)
   end;
 
-  if (keyLen and SizeOf(Byte)) <> 0 then
+  if (keyLen and SizeOf(Byte)) <> 0 then (* 1 *)
     hash32 := (hash32 xor (PByte(key))^) * PRIME_A;
 
   Result := hash32 xor (hash32 shr 16);
-
 end;
 
-function FNV1A_Hash_Meiyan(key: PChar; keyLen: NativeUInt): DWord; inline;
+function FNV1A_Hash_Meiyan(key: PChar; keyLen: NativeUInt): UInt32; inline;
 var
-  hash32: DWord;
+  hash32: UInt32;
 begin
   hash32 := BASE_A;
 
-  while keyLen >= SizeOf(QWord) do
+  while keyLen >= SizeOf(UInt64) do (* 8 *)
   begin
     hash32 := (hash32 xor (
       (* FPC RolDWord() *)
-      (((PDWord(key))^ shl 5) or ((PDWord(key))^ shr 27)) xor
-      (PDWord(key + SizeOf(DWord)))^
+      (((PUInt32(key))^ shl 5) or ((PUInt32(key))^ shr 27)) xor
+      (PUInt32(key + SizeOf(UInt32)))^ (* 4 *)
       )) * PRIME_A;
 
-    Dec(keyLen, SizeOf(QWord));
-    Inc(key, SizeOf(QWord));
+    Dec(keyLen, SizeOf(UInt64)); (* 8 *)
+    Inc(key, SizeOf(UInt64)); (* 8 *)
   end;
 
-  if (keyLen and SizeOf(DWord)) <> 0 then
+  (* Remaining bytes - 0..7 *)
+  if (keyLen and SizeOf(UInt32)) <> 0 then (* 4 *)
   begin
     hash32 := (hash32 xor (PWord(key))^) * PRIME_A;
-    Inc(key, SizeOf(Word));
+    Inc(key, SizeOf(Word)); (* 2 *)
     hash32 := (hash32 xor (PWord(key))^) * PRIME_A;
-    Inc(key, SizeOf(Word));
+    Inc(key, SizeOf(Word)); (* 2 *)
   end;
 
-  if (keyLen and SizeOf(Word)) <> 0 then
+  if (keyLen and SizeOf(Word)) <> 0 then (* 2 *)
   begin
     hash32 := (hash32 xor (PWord(key))^) * PRIME_A;
-    Inc(key, SizeOf(Word));
+    Inc(key, SizeOf(Word)); (* 2 *)
   end;
 
-  if (keyLen and SizeOf(Byte)) <> 0 then
+  if (keyLen and SizeOf(Byte)) <> 0 then (* 1 *)
     hash32 := (hash32 xor (PByte(key))^) * PRIME_A;
 
   Result := hash32 xor (hash32 shr 16);
-
 end;
 
-function FNV1A_Hash_Mantis(key: PChar; keyLen: NativeUInt): DWord; inline;
+function FNV1A_Hash_Mantis(key: PChar; keyLen: NativeUInt): UInt32; inline;
 var
-  hash32: DWord;
+  hash32: UInt32;
   p: PChar;
 begin
   hash32 := BASE_A;
   p := key;
 
-  if (keyLen and SizeOf(DWord)) <> 0 then
+  (* Leading bytes - 0..7 *)
+  if (keyLen and SizeOf(UInt32)) <> 0 then (* 4 *)
   begin
     hash32 := (hash32 xor (PWord(p))^) * PRIME_A;
-    Inc(p, SizeOf(Word));
+    Inc(p, SizeOf(Word)); (* 2 *)
     hash32 := (hash32 xor (PWord(p))^) * PRIME_A;
-    Inc(p, SizeOf(Word));
+    Inc(p, SizeOf(Word)); (* 2 *)
   end;
 
-  if (keyLen and SizeOf(Word)) <> 0 then
+  if (keyLen and SizeOf(Word)) <> 0 then (* 2 *)
   begin
     hash32 := (hash32 xor (PWord(p))^) * PRIME_A;
-    Inc(p, SizeOf(Word));
+    Inc(p, SizeOf(Word)); (* 2 *)
   end;
 
-  if (keyLen and SizeOf(Byte)) <> 0 then
+  if (keyLen and SizeOf(Byte)) <> 0 then (* 1 *)
   begin
     hash32 := (hash32 xor (PByte(p))^) * PRIME_A;
-    Inc(p, SizeOf(Byte));
+    Inc(p, SizeOf(Byte)); (* 1 *)
   end;
 
   Dec(keyLen, p - key);
 
-  while keyLen > SizeOf(QWord) do
+  while keyLen > SizeOf(UInt64) do (* 8 *)
   begin
     hash32 := (hash32 xor (
       (* FPC RolDWord() *)
-      (((PDWord(p))^ shl 5) or ((PDWord(p))^ shr 27)) xor
-      (PDWord(p + SizeOf(DWord)))^
+      (((PUInt32(p))^ shl 5) or ((PUInt32(p))^ shr 27)) xor
+      (PUInt32(p + SizeOf(UInt32)))^ (* 4 *)
       )) * PRIME_A;
-    Dec(keyLen, SizeOf(QWord));
-    Inc(p, SizeOf(QWord));
+    Dec(keyLen, SizeOf(UInt64)); (* 8 *)
+    Inc(p, SizeOf(UInt64)); (* 8 *)
   end;
 
+  (* Last 8 bytes *)
   if keyLen <> 0 then
   begin
-    hash32 := (hash32 xor (PWord(p + 0 * SizeOf(Word)))^) * PRIME_A;
-    hash32 := (hash32 xor (PWord(p + 1 * SizeOf(Word)))^) * PRIME_A;
-    hash32 := (hash32 xor (PWord(p + 2 * SizeOf(Word)))^) * PRIME_A;
-    hash32 := (hash32 xor (PWord(p + 3 * SizeOf(Word)))^) * PRIME_A;
+    hash32 := (hash32 xor (PWord(p + 0 * SizeOf(Word)))^) * PRIME_A; (* 0 *)
+    hash32 := (hash32 xor (PWord(p + 1 * SizeOf(Word)))^) * PRIME_A; (* 2 *)
+    hash32 := (hash32 xor (PWord(p + 2 * SizeOf(Word)))^) * PRIME_A; (* 4 *)
+    hash32 := (hash32 xor (PWord(p + 3 * SizeOf(Word)))^) * PRIME_A; (* 6 *)
   end;
 
   Result := hash32 xor (hash32 shr 16);
-
 end;
 
-function FNV1A_Hash_Yorikke(key: PChar; keyLen: NativeUInt): DWord; inline;
+function FNV1A_Hash_Yorikke(key: PChar; keyLen: NativeUInt): UInt32; inline;
 var
-  hash32: DWord;
-  hash32B: DWord;
+  hash32: UInt32;
+  hash32B: UInt32;
 begin
   hash32 := BASE_A;
   hash32B := BASE_A;
 
-  while keyLen >= 2*SizeOf(QWord) do
+  while keyLen >= 2*SizeOf(UInt64) do (* 16 = 2*8 *)
   begin
     hash32 := (hash32 xor (
       (* FPC RolDWord() *)
-      (((PDWord(key))^ shl 5) or ((PDWord(key))^ shr 27)) xor
-      (PDWord(key + SizeOf(DWord)))^
+      (((PUInt32(key))^ shl 5) or ((PUInt32(key))^ shr 27)) xor
+      (PUInt32(key + SizeOf(UInt32)))^  (* 4 *)
       )) * PRIME_A;
 
     hash32B := (hash32B xor (
       (* FPC RolDWord() *)
-      (((PDWord(key + 8))^ shl 5) or ((PDWord(key))^ shr 27)) xor
-      (PDWord(key + (8 + SizeOf(DWord))))^
+      (((PUInt32(key + SizeOf(UInt64)))^ shl 5) or ((PUInt32(key + SizeOf(UInt64)))^ shr 27)) xor
+      (PUInt32(key + (SizeOf(UInt64) + SizeOf(UInt32))))^
       )) * PRIME_A;
 
-    Dec(keyLen, 2*SizeOf(QWord));
-    Inc(key, 2*SizeOf(QWord));
+    Dec(keyLen, 2*SizeOf(UInt64)); (* 16 = 2*8 *)
+    Inc(key, 2*SizeOf(UInt64)); (* 16 = 2*8 *)
   end;
 
-  if (keyLen and SizeOf(QWord)) <> 0 then
+  (* Remaining bytes - 0..15 *)
+  if (keyLen and SizeOf(UInt64)) <> 0 then (* 8 *)
   begin
-    hash32 := (hash32 xor (PDWord(key))^) * PRIME_A;
-    hash32B := (hash32B xor (PDWord(key + 4))^) * PRIME_A;
-    Inc(key, SizeOf(QWord));
+    hash32 := (hash32 xor (PUInt32(key))^) * PRIME_A;
+    hash32B := (hash32B xor (PUInt32(key + SizeOf(UInt32)))^) * PRIME_A; (* 4 *)
+    Inc(key, SizeOf(UInt64)); (* 8 *)
   end;
 
-  if (keyLen and SizeOf(DWord)) <> 0 then
-  begin
-    hash32 := (hash32 xor (PWord(key))^) * PRIME_A;
-    hash32B := (hash32B xor (PWord(key + 2))^) * PRIME_A;
-    Inc(key, SizeOf(DWord));
-  end;
-
-  if (keyLen and SizeOf(Word)) <> 0 then
+  if (keyLen and SizeOf(UInt32)) <> 0 then (* 4 *)
   begin
     hash32 := (hash32 xor (PWord(key))^) * PRIME_A;
-    Inc(key, SizeOf(Word));
+    hash32B := (hash32B xor (PWord(key + SizeOf(Word)))^) * PRIME_A; (* 2 *)
+    Inc(key, SizeOf(UInt32)); (* 4 *)
   end;
 
-  if (keyLen and SizeOf(Byte)) <> 0 then
+  if (keyLen and SizeOf(Word)) <> 0 then (* 2 *)
+  begin
+    hash32 := (hash32 xor (PWord(key))^) * PRIME_A;
+    Inc(key, SizeOf(Word)); (* 2 *)
+  end;
+
+  if (keyLen and SizeOf(Byte)) <> 0 then (* 1 *)
     hash32 := (hash32 xor (PByte(key))^) * PRIME_A;
 
   (* FPC RolDWord() *)

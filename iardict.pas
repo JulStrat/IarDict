@@ -20,7 +20,7 @@ uses
   Classes, SysUtils;
 
 type
-  THash = function(key: PChar; keyLen: NativeUInt): DWord;
+  THash = function(key: PChar; keyLen: NativeUInt): UInt32;
 
   PIarDict = ^TIarDict;
 
@@ -43,10 +43,10 @@ type
     procedure Init(hash: THash; cap: NativeUInt); overload;
     procedure Clear;
     function UsedBlocks: NativeUInt; inline;
-    function Find(key: PChar; keyLen: NativeUInt; out value: Pointer): boolean;
+    function Find(key: PChar; keyLen: NativeUInt; out value: NativeUInt): boolean;
     function Remove(key: PChar; keyLen: NativeUInt): boolean;
-    function Insert(key: PChar; keyLen: NativeUInt; value: Pointer = nil): integer;
-    function SetValues(value: Pointer): NativeUInt;
+    function Insert(key: PChar; keyLen: NativeUInt; value: NativeUInt = 0): integer;
+    function SetValues(value: NativeUInt): NativeUInt;
 
     property keyNum: NativeUInt read FKeyNum;
     property capacity: NativeUInt read FCapacity;
@@ -63,16 +63,16 @@ type
   function KN_Next(kn: PChar): PPChar; inline;
   function KN_KeyLen(kn: PChar): PNativeUInt; inline;
   function KN_Key(kn: PChar): PChar; inline;
-  function KN_Value(kn: PChar): PPointer; inline;
+  function KN_Value(kn: PChar): PNativeUInt; inline;
 {$endif}
 
 (* function CmpMem(a, b: PChar; len: NativeUInt): boolean; inline; *)
-function MemEq(a, b: PChar; len: NativeUInt): boolean; inline;
-(* procedure MemCpy(src, dst: PChar; len: NativeUInt); inline; *)
+  function MemEq(a, b: PChar; len: NativeUInt): boolean; inline;
+  procedure MemCpy(src, dst: PChar; len: NativeUInt); inline;
 
 {  A fast alternative to the modulo reduction.
    https://github.com/lemire/fastrange  }
-  function FastRange32(x: DWord; r: DWord): DWord; inline;
+  function FastRange32(x, r: UInt32): UInt32; inline;
 
 implementation
 
@@ -209,12 +209,12 @@ begin
       Inc(Result);
 end;
 
-function TIarDict.Find(key: PChar; keyLen: NativeUInt; out value: Pointer): boolean;
+function TIarDict.Find(key: PChar; keyLen: NativeUInt; out value: NativeUInt): boolean;
 var
   bn: NativeUInt;
   kn, pn: PChar;
 begin
-  value := nil;
+  value := 0;
   if (key = nil) or (keyLen = 0) then
     Exit(false);
 
@@ -261,7 +261,7 @@ begin
     Result := false;
 end;
 
-function TIarDict.Insert(key: PChar; keyLen: NativeUInt; value: Pointer = nil): integer;
+function TIarDict.Insert(key: PChar; keyLen: NativeUInt; value: NativeUInt = 0): integer;
 var
   bn: NativeUInt;
   kn, pn: PChar;
@@ -295,7 +295,7 @@ begin
 
 end;
 
-function TIarDict.SetValues(value: Pointer): NativeUInt;
+function TIarDict.SetValues(value: NativeUInt): NativeUInt;
 var
   i: NativeUInt;
   kn, nn: PChar;
@@ -321,7 +321,7 @@ end;
 
 { KeyNode Layout
 next   - PChar       offset - 0
-value  - Pointer     offset - SizeOf(PChar)
+value  - NativeUInt  offset - SizeOf(NativeUInt)
 keeLen - NativeUInt  offset - SizeOf(PChar) + SizeOf(NativeUInt)
 key    - char[]      offset - SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(NativeUInt)
 
@@ -332,11 +332,11 @@ function KN_Create(key: PChar; keyLen: NativeUInt): PChar;
 var
   kn: PChar;
 begin
-  kn := GetMem((SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(Pointer)) + keyLen);
+  kn := GetMem((SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(NativeUInt)) + keyLen);
   (* Copy key *)
   {$ifndef USE_MACRO}
   KN_Next(kn)^ := nil;
-  KN_Value(kn)^ := nil;
+  KN_Value(kn)^ := 0;
   KN_KeyLen(kn)^ := keyLen;
 
   {$else}
@@ -346,7 +346,7 @@ begin
   {$endif}
 
   Move(key^, (kn + (SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(NativeUInt)))^, keyLen);
-  (* MemCpy(key, kn + (SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(NativeUInt)), keyLen); *)
+  //MemCpy(key, kn + (SizeOf(PChar) + SizeOf(NativeUInt) + SizeOf(NativeUInt)), keyLen);
   Result := kn;
 end;
 
@@ -356,9 +356,9 @@ begin
   Result := PPChar(kn);
 end;
 
-function KN_Value(kn: PChar): PPointer; inline;
+function KN_Value(kn: PChar): PNativeUInt; inline;
 begin
-  Result := PPointer(kn + SizeOf(PChar));
+  Result := PNativeUInt(kn + SizeOf(PChar));
 end;
 
 function KN_KeyLen(kn: PChar): PNativeUInt; inline;
@@ -373,94 +373,78 @@ end;
 
 {$endif}
 
-function FastRange32(x: DWord; r: DWord): DWord; inline;
+function FastRange32(x, r: UInt32): UInt32; inline;
 begin
-  Result := DWord((QWord(x) * QWord(r)) shr 32);
+  Result := UInt32((UInt64(x) * UInt64(r)) shr 32);
 end;
 
+(* Not secure memcmp() *)
 function MemEq(a, b: PChar; len: NativeUInt): boolean; inline;
 begin
-  while len >= 16 do
+  while len >= 4*SizeOf(NativeUInt) do
   begin
-    if PDWord(a)^ <> PDWord(b)^ then Exit(false);
-    Inc(a, 4); Inc(b, 4); Dec(len, 4);
-    if PDWord(a)^ <> PDWord(b)^ then Exit(false);
-    Inc(a, 4); Inc(b, 4); Dec(len, 4);
-    if PDWord(a)^ <> PDWord(b)^ then Exit(false);
-    Inc(a, 4); Inc(b, 4); Dec(len, 4);
-    if PDWord(a)^ <> PDWord(b)^ then Exit(false);
-    Inc(a, 4); Inc(b, 4); Dec(len, 4);
+    if PNativeUInt(a)^ <> PNativeUInt(b)^ then Exit(false);
+    Inc(a, SizeOf(NativeUInt)); Inc(b, SizeOf(NativeUInt));
+    Dec(len, SizeOf(NativeUInt));
+    if PNativeUInt(a)^ <> PNativeUInt(b)^ then Exit(false);
+    Inc(a, SizeOf(NativeUInt)); Inc(b, SizeOf(NativeUInt));
+    Dec(len, SizeOf(NativeUInt));
+    if PNativeUInt(a)^ <> PNativeUInt(b)^ then Exit(false);
+    Inc(a, SizeOf(NativeUInt)); Inc(b, SizeOf(NativeUInt));
+    Dec(len, SizeOf(NativeUInt));
+    if PNativeUInt(a)^ <> PNativeUInt(b)^ then Exit(false);
+    Inc(a, SizeOf(NativeUInt)); Inc(b, SizeOf(NativeUInt));
+    Dec(len, SizeOf(NativeUInt));
   end;
 
-  if (len and 8) <> 0 then
+  while len >= SizeOf(NativeUInt) do
   begin
-    if PDWord(a)^ <> PDWord(b)^ then Exit(false);
-    Inc(a, 4); Inc(b, 4); Dec(len, 4);
-    if PDWord(a)^ <> PDWord(b)^ then Exit(false);
-    Inc(a, 4); Inc(b, 4); Dec(len, 4);
-  end;  
-
-  if (len and 4) <> 0 then
-  begin
-    if PDWord(a)^ <> PDWord(b)^ then Exit(false);
-    Inc(a, 4); Inc(b, 4); Dec(len, 4);
+    if PNativeUInt(a)^ <> PNativeUInt(b)^ then Exit(false);
+    Inc(a, SizeOf(NativeUInt)); Inc(b, SizeOf(NativeUInt));
+    Dec(len, SizeOf(NativeUInt));
   end;
 
-  if (len and 2) <> 0 then
-  begin
-    if PWord(a)^ <> PWord(b)^ then Exit(false);
-    Inc(a, 2); Inc(b, 2); Dec(len, 2);
-  end;
-
-  if (len and 1) <> 0 then
+  while len > 0 do
   begin
     if a^ <> b^ then Exit(false);
+    Inc(a); Inc(b); Dec(len);
   end;
-  Exit(true);
 
+  Exit(true);
 end;
-(*
+
 procedure MemCpy(src, dst: PChar; len: NativeUInt); inline;
 begin
-  while len >= 16 do
+  while len >= 4*SizeOf(NativeUInt) do
   begin
-    PDWord(dst)^ := PDWord(src)^;
-    Inc(src, 4); Inc(dst, 4); Dec(len, 4);
-    PDWord(dst)^ := PDWord(src)^;
-    Inc(src, 4); Inc(dst, 4); Dec(len, 4);
-    PDWord(dst)^ := PDWord(src)^;
-    Inc(src, 4); Inc(dst, 4); Dec(len, 4);
-    PDWord(dst)^ := PDWord(src)^;
-    Inc(src, 4); Inc(dst, 4); Dec(len, 4);
-  end;
-  
-  if (len and 8) <> 0 then
-  begin
-    PDWord(dst)^ := PDWord(src)^;
-    Inc(src, 4); Inc(dst, 4); Dec(len, 4);
-    PDWord(dst)^ := PDWord(src)^;
-    Inc(src, 4); Inc(dst, 4); Dec(len, 4);
-  end;
-  
-  if (len and 4) <> 0 then
-  begin
-    PDWord(dst)^ := PDWord(src)^;
-    Inc(src, 4); Inc(dst, 4); Dec(len, 4);
+    PNativeUInt(dst)^ := PNativeUInt(src)^;
+    Inc(src, SizeOf(NativeUInt)); Inc(dst, SizeOf(NativeUInt));
+    Dec(len, SizeOf(NativeUInt));
+    PNativeUInt(dst)^ := PNativeUInt(src)^;
+    Inc(src, SizeOf(NativeUInt)); Inc(dst, SizeOf(NativeUInt));
+    Dec(len, SizeOf(NativeUInt));
+    PNativeUInt(dst)^ := PNativeUInt(src)^;
+    Inc(src, SizeOf(NativeUInt)); Inc(dst, SizeOf(NativeUInt));
+    Dec(len, SizeOf(NativeUInt));
+    PNativeUInt(dst)^ := PNativeUInt(src)^;
+    Inc(src, SizeOf(NativeUInt)); Inc(dst, SizeOf(NativeUInt));
+    Dec(len, SizeOf(NativeUInt));
   end;
 
-  if (len and 2) <> 0 then
+  while len >= SizeOf(NativeUInt) do
   begin
-    PWord(dst)^ := PWord(src)^;
-    Inc(src, 2); Inc(dst, 2); Dec(len, 2);
+    PNativeUInt(dst)^ := PNativeUInt(src)^;
+    Inc(src, SizeOf(NativeUInt)); Inc(dst, SizeOf(NativeUInt));
+    Dec(len, SizeOf(NativeUInt));
   end;
 
-  if (len and 1) <> 0 then
+  while len > 0 do
   begin
     dst^ := src^;
+    Inc(src); Inc(dst); Dec(len);
   end;
-
 end;
-*)
+
 initialization
 
 finalization
